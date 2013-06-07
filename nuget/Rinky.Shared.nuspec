@@ -1,0 +1,11 @@
+﻿<?xml version="1.0"?>
+<!-- Rinky Shared Nuspec File; all packages share this -->
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <version>$version$</version>
+    <authors>Pete Klein</authors>
+    <owners>pjklein</owners>
+    <copyright>© 2013 Pete Klein</copyright>    
+    <projectUrl>http://github.com/pjklein/Rinky</projectUrl>
+  </metadata>
+</package>	

@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package inherits="../Rinky.Shared.nuspec" xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd" xmlns:xdt="http://schemas.microsoft.com/XML-Document-Transform">
+  <metadata>
+    <id xdt:Transform="Insert">Rinky</id>
+    <title xdt:Transform="Insert">Rinky</title>
+    <description xdt:Transform="Insert">Rinky lets you define RESTful links using attributes on action methods in ASP.NET Web API.</description>
+	<tags xdt:Transform="Insert">api, asp.net, attribute, link, mvc, rest, restful, web, webapi</tags>
+    <dependencies xdt:Transform="Insert">
+      <dependency id="Microsoft.AspNet.WebApi.Core" version="4.0.20710.0" />
+    </dependencies>
+  </metadata>
+
+  <files xdt:Transform="Insert">
+    <file src="..\..\build\bin\Rinky.dll" target="lib\net40" />
+    <file src="..\..\build\bin\Rinky.xml" target="lib\net40" />
+  </files>
+</package>

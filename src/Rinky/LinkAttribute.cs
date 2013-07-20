@@ -1,6 +1,7 @@
 ﻿using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Web.Http;
 using System.Text.RegularExpressions;
 using System.Web.Http.Filters;
 
@@ -23,9 +24,29 @@ namespace Rinky
         /// </summary>
         /// <param name="actionExecutedContext">The context that will be filtered.</param>
         public override void OnActionExecuted(HttpActionExecutedContext actionExecutedContext) {
-            // for initial release, omit the body, since the offline working code is coupled to an OData specific implementation.
+            try {
+                if (actionExecutedContext.Response.StatusCode == this.statusCode) {
+                    object actionResult;
+                    actionExecutedContext.Response.TryGetContentValue(out actionResult);
+                    if (actionResult != null) {
+                        // apply this Link's query recursively
+                        // first, seed the recursion with the root object, current object and current property 
+                        // all set to the action's result
 
-            // that is, it does do anything, except compile cleanly when installed from nuget.
+                        // for now, work in JSON--but respect the caller's settings.
+                        JsonSerializer sizer = JsonSerializer.Create(GlobalConfiguration.Configuration.Formatters.JsonFormatter.SerializerSettings);
+                        var injectedObject = Newtonsoft.Json.Linq.JToken.FromObject(actionResult, sizer);
+
+                        JToken obj = injectedObject;
+
+                        Walk(obj, this);
+                        
+                        actionExecutedContext.Response = actionExecutedContext.Request.CreateResponse(actionExecutedContext.Response.StatusCode, injectedObject.ToObject<object>());
+                    }
+                }
+            } catch {
+                //an error? Then do not replace the action result. Needs work.
+            }
         }
 
         #endregion
@@ -65,12 +86,12 @@ namespace Rinky
         /// <example>An attributed route returns an array of orders, each containing an array of order lines.  To inject a link into each 
         /// order line detail:
         /// <code>
-        /// [LinkAttribute("orderLineDetail", "api/orders/{../../OrderNo}/detail/{OrderLineNo}", "Results", "[]", "OrderLines", "[]")]
+        /// [Link("orderLineDetail", "api/orders/{OrderNo}/detail/{OrderLineNo}", "Results", "[]", "OrderLines", "[]")]
         /// </code>
         /// </example>
         /// <example>The same example as above, but the resource being returned is a newly created order, so we only want links if the creation of the order was successful: 
         /// <code>
-        /// [LinkAttribute("orderLineDetail", "api/orders/{../../OrderNo}/detail/{OrderLineNo}", HttpStatusCode.OK, "Results", "[]", "OrderLines", "[]")]
+        /// [Link("orderLineDetail", "api/orders/{OrderNo}/detail/{OrderLineNo}", HttpStatusCode.OK, "Results", "[]", "OrderLines", "[]")]
         /// </code>
         /// </example>
         public LinkAttribute(string Rel, string Href, params string[] Query) : this(Rel, Href, HttpStatusCode.OK, Query) { }
@@ -85,12 +106,12 @@ namespace Rinky
         /// <example>An attributed route returns an array of orders, each containing an array of order lines.  To inject a link into each 
         /// order line detail:
         /// <code>
-        /// [LinkAttribute("orderLineDetail", "api/orders/{../../OrderNo}/detail/{OrderLineNo}", "Results", "[]", "OrderLines", "[]")]
+        /// [Link("orderLineDetail", "api/orders/{OrderNo}/detail/{OrderLineNo}", "Results", "[]", "OrderLines", "[]")]
         /// </code>
         /// </example>
         /// <example>The same example as above, but the resource being returned is a newly created order, so we only want links if the creation of the order was successful: 
         /// <code>
-        /// [LinkAttribute("orderLineDetail", "api/orders/{../../OrderNo}/detail/{OrderLineNo}", HttpStatusCode.OK, "Results", "[]", "OrderLines", "[]")]
+        /// [Link("orderLineDetail", "api/orders/{OrderNo}/detail/{OrderLineNo}", HttpStatusCode.OK, "Results", "[]", "OrderLines", "[]")]
         /// </code>
         /// </example>
         public LinkAttribute(string Rel, string Href, HttpStatusCode Status, params string[] Query) {
@@ -119,15 +140,15 @@ namespace Rinky
         }
 
         /// <summary>
-        /// Does a depth-first traversal of the properties of the given object obj. the given object recursively, depth-first.
+        /// Does a depth-first traversal of the properties of the given object recursively, depth-first.
         /// 
         /// p-code:
         ///   if (link.query is empty) {
         ///     for each member {
         ///       using link.rel and link.href, format a link and attach it to the member;
         ///       ====>>> 
-        ///         BUT, __HOW__ do we get the parameters from the call? 
-        ///         we have to map them using a language that is NOT using the 
+        ///         Q. BUT, __HOW__ do we get the parameters from the request? 
+        ///         A. We do not get them from the call, we get them from the response.
         ///       ====>>>
         ///     }
         ///   } else {
@@ -138,11 +159,9 @@ namespace Rinky
         ///     }
         ///   }
         /// </summary>
-        /// <param name="root"></param>
-        /// <param name="parent"></param>
         /// <param name="obj"></param>
         /// <param name="link"></param>
-        private void Walk(JObject root, JToken parent, JToken obj, LinkAttribute link) {
+        private void Walk(JToken obj, LinkAttribute link) {
             if (link.query == null) {
                 JObject linkingObject = obj as JObject;
                 // construct an object in serial, then deserialize it and insert it
@@ -159,11 +178,11 @@ namespace Rinky
                 JToken propertyValue;
                 if (propertySought == "[]") {
                     foreach (JToken arrayMember in (obj as JArray)) {
-                        Walk(root, obj, arrayMember, remainingLink);
+                        Walk(arrayMember, remainingLink);
                     }
                 } else {
                     if ((obj as JObject).TryGetValue(propertySought, out propertyValue) && propertyValue != null) {
-                        Walk(root, obj, propertyValue, remainingLink);
+                        Walk(propertyValue, remainingLink);
                     }
                 }
             }
@@ -184,13 +203,19 @@ namespace Rinky
         /// for example:
         /// 
         /// var widget = new { ID = "12345", ClientName = "Joe", Balance = "9876.54" };
-        /// string resolved = "/foo/bar/{ClientName}/baz".ResolveParameters(widget);
+        /// string resolved = "/foo/bar/{ClientName}/baz".ResolveParameters(widget);     // Example (1)
         /// 
         /// results in resolved having a value of "/foo/bar/Joe/baz".
         /// 
         /// You can also do a unique traversal using a dotted notation.
         /// 
-        /// "/a/b/{Client.Name}/c".ResolveParameters(new { ID = "123456", Client = new { FirstName = "Fred", LastName = "Ngyuen" }, Balance = "98765.43"}) 
+        /// "/a/b/{Client.FirstName}/c"                                                      // Example (2)
+        ///     .ResolveParameters(
+        ///        new { 
+        ///           ID = "123456", 
+        ///           Client = new { FirstName = "Fred", LastName = "Ngyuen" }, 
+        ///           Balance = "98765.43"
+        ///      }) 
         /// returns
         /// "/a/b/Fred/c"
         /// 
@@ -200,7 +225,14 @@ namespace Rinky
         /// <returns></returns>
         public static string ResolveParameters(this string parameterizedString, object obj) {
             string result = parameterizedString;
-            foreach (object token in Regex.Matches(parameterizedString, @"{[a-zA-Z.]*}")) {
+            /* "token" is {ClientName} in Example (1), above */
+            foreach (object token in Regex.Matches(parameterizedString, @"{(\.\./)*[a-zA-Z0-9]+}")) {
+                /* 
+                 * value is "Fred" in Example (2), above:
+                 *  1. The token--{Client.FirstName}--is split at the braces, leaving Client.FirstName--the Query Expression
+                 *  2. The Query Expression is split at the dots, leaving the Query array ["Client", "FirstName"]
+                 *  3. The Query array is passed to GetValue, which recurses into the current object on the current first array entry 
+                 */
                 object value = GetValue(JObject.FromObject(obj), token.ToString().Split(new char[] { '{', '}' })[1].Split('.'));
                 if (value == null)
                     return null;
@@ -233,5 +265,6 @@ namespace Rinky
         }
 
     }
+
 }
 

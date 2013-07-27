@@ -3,10 +3,11 @@
   <metadata>
     <id xdt:Transform="Insert">Rinky</id>
     <title xdt:Transform="Insert">Rinky</title>
-    <description xdt:Transform="Insert">Rinky lets you define RESTful links using attributes on action methods in ASP.NET Web API.</description>
+    <description xdt:Transform="Insert">Rinky lets you define RESTful links using attributes on action methods in ASP.NET Web API WebHost.</description>
 	<tags xdt:Transform="Insert">api, asp.net, attribute, link, mvc, rest, restful, web, webapi</tags>
     <dependencies xdt:Transform="Insert">
-      <dependency id="Microsoft.AspNet.WebApi.Core" version="4.0.20710.0" />
+      <dependency id="Microsoft.AspNet.WebApi.WebHost" version="4.0.30506.0"/>
+      <dependency id="Newtonsoft.Json" version="5.0.6"/>
     </dependencies>
   </metadata>
 

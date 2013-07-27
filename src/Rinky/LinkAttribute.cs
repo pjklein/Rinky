@@ -1,6 +1,7 @@
 ﻿using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Formatting;
 using System.Web.Http;
 using System.Text.RegularExpressions;
 using System.Web.Http.Filters;
@@ -24,28 +25,30 @@ namespace Rinky
         /// </summary>
         /// <param name="actionExecutedContext">The context that will be filtered.</param>
         public override void OnActionExecuted(HttpActionExecutedContext actionExecutedContext) {
-            try {
-                if (actionExecutedContext.Response.StatusCode == this.statusCode) {
-                    object actionResult;
-                    actionExecutedContext.Response.TryGetContentValue(out actionResult);
-                    if (actionResult != null) {
-                        // apply this Link's query recursively
-                        // first, seed the recursion with the root object, current object and current property 
-                        // all set to the action's result
 
-                        // for now, work in JSON--but respect the caller's settings.
-                        JsonSerializer sizer = JsonSerializer.Create(GlobalConfiguration.Configuration.Formatters.JsonFormatter.SerializerSettings);
-                        var injectedObject = Newtonsoft.Json.Linq.JToken.FromObject(actionResult, sizer);
+            // if there's been a problem up to this point, LinkAttribute has nothing to do.
+            if (actionExecutedContext.Exception == null) {
+                try {
+                    if (actionExecutedContext.Response.StatusCode == this.statusCode) {
+                        object actionResult;
+                        actionExecutedContext.Response.TryGetContentValue(out actionResult);
+                        if (actionResult != null) {
+                            // apply this Link's query recursively
+                            // first, seed the recursion with the root object, current object and current property 
+                            // all set to the action's result
 
-                        JToken obj = injectedObject;
+                            var injectedObject = Newtonsoft.Json.Linq.JToken.FromObject(actionResult, serializer);
 
-                        Walk(obj, this);
-                        
-                        actionExecutedContext.Response = actionExecutedContext.Request.CreateResponse(actionExecutedContext.Response.StatusCode, injectedObject.ToObject<object>());
+                            JToken obj = injectedObject;
+
+                            Walk(obj, this);
+
+                            actionExecutedContext.Response = actionExecutedContext.Request.CreateResponse(actionExecutedContext.Response.StatusCode, injectedObject.ToObject<object>());
+                        }
                     }
+                } catch {
+                    // if LinkAttribute has a problem, it does leaves the original Response in place.
                 }
-            } catch {
-                //an error? Then do not replace the action result. Needs work.
             }
         }
 
@@ -57,6 +60,7 @@ namespace Rinky
         private string href;
         private HttpStatusCode statusCode;
         private string[] query;
+        JsonSerializer serializer; 
 
         #endregion
 
@@ -74,7 +78,7 @@ namespace Rinky
         /// </summary>
         /// <param name="Rel">Identifies the type of of the link</param>
         /// <param name="Href">The relative route to the linked resource. To include a resource value from the linking resource in the injected link, enclose its relative path in {curly braces}. Property names in this relative path are case-sensitive.</param>
-        /// <param name="Status">[Optional] Conditions injection of a link on the status code of the response. Default is HttpStatusCode.OK</param>
+        /// <param name="Status">Conditions injection of a link on the status code of the response. Default is HttpStatusCode.OK</param>
         public LinkAttribute(string Rel, string Href, HttpStatusCode Status) : this(Rel, Href, Status, null) { }
 
         /// <summary>
@@ -82,7 +86,7 @@ namespace Rinky
         /// </summary>
         /// <param name="Rel">Identifies the type of of the link</param>
         /// <param name="Href">The relative route to the linked resource. To include a resource value from the linking resource in the injected link, enclose its relative path in {curly braces}. Property names in this relative path are case-sensitive.</param>
-        /// <param name="Query">[Optional] List of property names, used to find subproperties of the linking resource into which to inject links.</param>
+        /// <param name="Query">List of property names, used to find subproperties of the linking resource into which to inject links.</param>
         /// <example>An attributed route returns an array of orders, each containing an array of order lines.  To inject a link into each 
         /// order line detail:
         /// <code>
@@ -91,7 +95,7 @@ namespace Rinky
         /// </example>
         /// <example>The same example as above, but the resource being returned is a newly created order, so we only want links if the creation of the order was successful: 
         /// <code>
-        /// [Link("orderLineDetail", "api/orders/{OrderNo}/detail/{OrderLineNo}", HttpStatusCode.OK, "Results", "[]", "OrderLines", "[]")]
+        /// [Link("orderLineDetail", "api/orders/{OrderNo}/detail/{OrderLineNo}", HttpStatusCode.Created, "Results", "[]", "OrderLines", "[]")]
         /// </code>
         /// </example>
         public LinkAttribute(string Rel, string Href, params string[] Query) : this(Rel, Href, HttpStatusCode.OK, Query) { }
@@ -101,8 +105,8 @@ namespace Rinky
         /// </summary>
         /// <param name="Rel">Identifies the type of of the link</param>
         /// <param name="Href">The relative route to the linked resource. To include a resource value from the linking resource in the injected link, enclose its relative path in {curly braces}. Property names in this relative path are case-sensitive.</param>
-        /// <param name="Status">[Optional] Conditions injection of a link on the status code of the response. Default is HttpStatusCode.OK</param>
-        /// <param name="Query">[Optional] List of property names, used to find subproperties of the linking resource into which to inject links.</param>
+        /// <param name="Status">Conditions injection of a link on the status code of the response. Default is HttpStatusCode.OK</param>
+        /// <param name="Query">List of property names, used to find subproperties of the linking resource into which to inject links.</param>
         /// <example>An attributed route returns an array of orders, each containing an array of order lines.  To inject a link into each 
         /// order line detail:
         /// <code>
@@ -111,7 +115,7 @@ namespace Rinky
         /// </example>
         /// <example>The same example as above, but the resource being returned is a newly created order, so we only want links if the creation of the order was successful: 
         /// <code>
-        /// [Link("orderLineDetail", "api/orders/{OrderNo}/detail/{OrderLineNo}", HttpStatusCode.OK, "Results", "[]", "OrderLines", "[]")]
+        /// [Link("orderLineDetail", "api/orders/{OrderNo}/detail/{OrderLineNo}", HttpStatusCode.Created, "Results", "[]", "OrderLines", "[]")]
         /// </code>
         /// </example>
         public LinkAttribute(string Rel, string Href, HttpStatusCode Status, params string[] Query) {
@@ -119,6 +123,7 @@ namespace Rinky
             href = Href;
             statusCode = Status;
             query = Query;
+            serializer = JsonSerializer.Create(GlobalConfiguration.Configuration.Formatters.JsonFormatter.SerializerSettings);
         }
 
         #endregion
